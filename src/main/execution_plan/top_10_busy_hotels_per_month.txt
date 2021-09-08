@@ -1,0 +1,213 @@
+Top 10 busy (e.g., with the biggest visits count) hotels for each month.
+If visit dates refer to several months, it should be counted for all affected months.
+
+== Physical Plan ==
+CollectLimit (36)
++- AdaptiveSparkPlan (35)
++- == Final Plan ==
+* Project (21)
++- * Filter (20)
++- * RunningWindowFunction (19)
++- * Sort (18)
++- CustomShuffleReader (17)
++- ShuffleQueryStage (16)
++- Exchange (15)
++- * HashAggregate (14)
++- CustomShuffleReader (13)
++- ShuffleQueryStage (12)
++- Exchange (11)
++- * HashAggregate (10)
++- * Generate (9)
++- * HashAggregate (8)
++- CustomShuffleReader (7)
++- ShuffleQueryStage (6)
++- Exchange (5)
++- * HashAggregate (4)
++- * Filter (3)
++- * ColumnarToRow (2)
++- Scan parquet m07sparksql.expedia (1)
++- == Initial Plan ==
+Project (34)
++- Filter (33)
++- RunningWindowFunction (32)
++- Sort (31)
++- Exchange (30)
++- HashAggregate (29)
++- Exchange (28)
++- HashAggregate (27)
++- Generate (26)
++- HashAggregate (25)
++- Exchange (24)
++- HashAggregate (23)
++- Filter (22)
++- Scan parquet m07sparksql.expedia (1)
+
+
+(1) Scan parquet m07sparksql.expedia
+Output [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+Batched: true
+Location: PreparedDeltaFileIndex [dbfs:/user/hive/warehouse/m07sparksql.db/expedia]
+ReadSchema: struct<user_id:int,srch_ci:string,srch_co:string,hotel_id:bigint>
+
+(2) ColumnarToRow [codegen id : 1]
+Input [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+
+(3) Filter [codegen id : 1]
+Input [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+Condition : ((size(CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END, true) > 0) AND isnotnull(CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END))
+
+(4) HashAggregate [codegen id : 1]
+Input [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+Keys [3]: [hotel_id#11783L, srch_ci#11776, srch_co#11777]
+Functions [1]: [partial_count(user_id#11772) AS count#11799L]
+Aggregate Attributes [1]: [count#11798L]
+Results [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+
+(5) Exchange
+Input [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Arguments: hashpartitioning(hotel_id#11783L, srch_ci#11776, srch_co#11777, 200), ENSURE_REQUIREMENTS, [id=#12712]
+
+(6) ShuffleQueryStage
+Output [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Arguments: 0, Statistics(sizeInBytes=147.4 MiB, rowCount=2.15E+6, isRuntime=true)
+
+(7) CustomShuffleReader
+Input [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Arguments: coalesced
+
+(8) HashAggregate [codegen id : 2]
+Input [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Keys [3]: [hotel_id#11783L, srch_ci#11776, srch_co#11777]
+Functions [1]: [finalmerge_count(merge count#11799L) AS count(user_id#11772)#11784L]
+Aggregate Attributes [1]: [count(user_id#11772)#11784L]
+Results [3]: [hotel_id#11783L, count(user_id#11772)#11784L AS count_user#11741L, CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END AS month_array#11742]
+
+(9) Generate [codegen id : 2]
+Input [3]: [hotel_id#11783L, count_user#11741L, month_array#11742]
+Arguments: explode(month_array#11742), [hotel_id#11783L, count_user#11741L], false, [month#11786]
+
+(10) HashAggregate [codegen id : 2]
+Input [3]: [hotel_id#11783L, count_user#11741L, month#11786]
+Keys [2]: [month#11786, hotel_id#11783L]
+Functions [1]: [partial_sum(count_user#11741L) AS sum#11797L]
+Aggregate Attributes [1]: [sum#11796L]
+Results [3]: [month#11786, hotel_id#11783L, sum#11797L]
+
+(11) Exchange
+Input [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Arguments: hashpartitioning(month#11786, hotel_id#11783L, 200), ENSURE_REQUIREMENTS, [id=#12823]
+
+(12) ShuffleQueryStage
+Output [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Arguments: 1, Statistics(sizeInBytes=4.6 MiB, rowCount=1.52E+5, isRuntime=true)
+
+(13) CustomShuffleReader
+Input [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Arguments: coalesced
+
+(14) HashAggregate [codegen id : 3]
+Input [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Keys [2]: [month#11786, hotel_id#11783L]
+Functions [1]: [finalmerge_sum(merge sum#11797L) AS sum(count_user#11741L)#11787L]
+Aggregate Attributes [1]: [sum(count_user#11741L)#11787L]
+Results [4]: [hotel_id#11783L, sum(count_user#11741L)#11787L AS visitors_per_month#11739L, month#11786, sum(count_user#11741L)#11787L AS _w3#11789L]
+
+(15) Exchange
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: hashpartitioning(month#11786, 200), ENSURE_REQUIREMENTS, [id=#12885]
+
+(16) ShuffleQueryStage
+Output [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: 2, Statistics(sizeInBytes=436.0 KiB, rowCount=1.12E+4, isRuntime=true)
+
+(17) CustomShuffleReader
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: coalesced
+
+(18) Sort [codegen id : 4]
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: [month#11786 ASC NULLS FIRST, _w3#11789L DESC NULLS LAST], false, 0
+
+(19) RunningWindowFunction [codegen id : 4]
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_number() windowspecdefinition(month#11786, _w3#11789L DESC NULLS LAST, specifiedwindowframe(RowFrame, unboundedpreceding$(), currentrow$())) AS row_num#11740], [month#11786], [_w3#11789L DESC NULLS LAST], false
+
+(20) Filter [codegen id : 4]
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_num#11740]
+Condition : (isnotnull(row_num#11740) AND (row_num#11740 <= 10))
+
+(21) Project [codegen id : 4]
+Output [3]: [hotel_id#11783L, visitors_per_month#11739L, month#11786]
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_num#11740]
+
+(22) Filter
+Input [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+Condition : ((size(CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END, true) > 0) AND isnotnull(CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END))
+
+(23) HashAggregate
+Input [4]: [user_id#11772, srch_ci#11776, srch_co#11777, hotel_id#11783L]
+Keys [3]: [hotel_id#11783L, srch_ci#11776, srch_co#11777]
+Functions [1]: [partial_count(user_id#11772) AS count#11799L]
+Aggregate Attributes [1]: [count#11798L]
+Results [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+
+(24) Exchange
+Input [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Arguments: hashpartitioning(hotel_id#11783L, srch_ci#11776, srch_co#11777, 200), ENSURE_REQUIREMENTS, [id=#12558]
+
+(25) HashAggregate
+Input [4]: [hotel_id#11783L, srch_ci#11776, srch_co#11777, count#11799L]
+Keys [3]: [hotel_id#11783L, srch_ci#11776, srch_co#11777]
+Functions [1]: [finalmerge_count(merge count#11799L) AS count(user_id#11772)#11784L]
+Aggregate Attributes [1]: [count(user_id#11772)#11784L]
+Results [3]: [hotel_id#11783L, count(user_id#11772)#11784L AS count_user#11741L, CASE WHEN (month(cast(srch_co#11777 as date)) > month(cast(srch_ci#11776 as date))) THEN sequence(month(cast(srch_ci#11776 as date)), month(cast(srch_co#11777 as date)), Some(1), Some(Etc/UTC)) ELSE sequence(month(cast(srch_co#11777 as date)), month(cast(srch_ci#11776 as date)), Some(1), Some(Etc/UTC)) END AS month_array#11742]
+
+(26) Generate
+Input [3]: [hotel_id#11783L, count_user#11741L, month_array#11742]
+Arguments: explode(month_array#11742), [hotel_id#11783L, count_user#11741L], false, [month#11786]
+
+(27) HashAggregate
+Input [3]: [hotel_id#11783L, count_user#11741L, month#11786]
+Keys [2]: [month#11786, hotel_id#11783L]
+Functions [1]: [partial_sum(count_user#11741L) AS sum#11797L]
+Aggregate Attributes [1]: [sum#11796L]
+Results [3]: [month#11786, hotel_id#11783L, sum#11797L]
+
+(28) Exchange
+Input [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Arguments: hashpartitioning(month#11786, hotel_id#11783L, 200), ENSURE_REQUIREMENTS, [id=#12563]
+
+(29) HashAggregate
+Input [3]: [month#11786, hotel_id#11783L, sum#11797L]
+Keys [2]: [month#11786, hotel_id#11783L]
+Functions [1]: [finalmerge_sum(merge sum#11797L) AS sum(count_user#11741L)#11787L]
+Aggregate Attributes [1]: [sum(count_user#11741L)#11787L]
+Results [4]: [hotel_id#11783L, sum(count_user#11741L)#11787L AS visitors_per_month#11739L, month#11786, sum(count_user#11741L)#11787L AS _w3#11789L]
+
+(30) Exchange
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: hashpartitioning(month#11786, 200), ENSURE_REQUIREMENTS, [id=#12566]
+
+(31) Sort
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: [month#11786 ASC NULLS FIRST, _w3#11789L DESC NULLS LAST], false, 0
+
+(32) RunningWindowFunction
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, _w3#11789L]
+Arguments: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_number() windowspecdefinition(month#11786, _w3#11789L DESC NULLS LAST, specifiedwindowframe(RowFrame, unboundedpreceding$(), currentrow$())) AS row_num#11740], [month#11786], [_w3#11789L DESC NULLS LAST], false
+
+(33) Filter
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_num#11740]
+Condition : (isnotnull(row_num#11740) AND (row_num#11740 <= 10))
+
+(34) Project
+Output [3]: [hotel_id#11783L, visitors_per_month#11739L, month#11786]
+Input [4]: [hotel_id#11783L, visitors_per_month#11739L, month#11786, row_num#11740]
+
+(35) AdaptiveSparkPlan
+Output [3]: [hotel_id#11783L, visitors_per_month#11739L, month#11786]
+Arguments: isFinalPlan=true
+
+(36) CollectLimit
+Input [3]: [hotel_id#11783L, visitors_per_month#11739L, month#11786]
+Arguments: 1001

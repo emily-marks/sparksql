@@ -1,0 +1,184 @@
+Top 10 hotels with max absolute temperature difference by month.
+
+== Physical Plan ==
+AdaptiveSparkPlan (30)
++- == Final Plan ==
+TakeOrderedAndProject (18)
++- * Project (17)
++- * HashAggregate (16)
++- CustomShuffleReader (15)
++- ShuffleQueryStage (14)
++- Exchange (13)
++- * HashAggregate (12)
++- * Project (11)
++- * BroadcastHashJoin Inner BuildLeft (10)
+:- BroadcastQueryStage (6)
+:  +- BroadcastExchange (5)
+:     +- * HashAggregate (4)
+:        +- * Filter (3)
+:           +- * ColumnarToRow (2)
+:              +- Scan parquet m07sparksql.hotel_weather (1)
++- * Filter (9)
++- * ColumnarToRow (8)
++- Scan parquet m07sparksql.expedia (7)
++- == Initial Plan ==
+TakeOrderedAndProject (29)
++- Project (28)
++- HashAggregate (27)
++- Exchange (26)
++- HashAggregate (25)
++- Project (24)
++- BroadcastHashJoin Inner BuildLeft (23)
+:- BroadcastExchange (21)
+:  +- HashAggregate (20)
+:     +- Filter (19)
+:        +- Scan parquet m07sparksql.hotel_weather (1)
++- Filter (22)
++- Scan parquet m07sparksql.expedia (7)
+
+
+(1) Scan parquet m07sparksql.hotel_weather
+Output [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+Batched: true
+Location: PreparedDeltaFileIndex [dbfs:/mnt/target/hitel-weather-delta]
+PushedFilters: [IsNotNull(id)]
+ReadSchema: struct<avg_tmpr_c:double,id:string,name:string,month:int>
+
+(2) ColumnarToRow [codegen id : 1]
+Input [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+
+(3) Filter [codegen id : 1]
+Input [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+Condition : isnotnull(id#11169)
+
+(4) HashAggregate [codegen id : 1]
+Input [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [partial_max(avg_tmpr_c#11164) AS max#11209, partial_min(avg_tmpr_c#11164) AS min#11211]
+Aggregate Attributes [2]: [max#11209, min#11211]
+Results [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+
+(5) BroadcastExchange
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: HashedRelationBroadcastMode(List(cast(input[1, string, true] as bigint)),false), [id=#12324]
+
+(6) BroadcastQueryStage
+Output [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: 0, Statistics(sizeInBytes=1152.0 KiB, rowCount=7.97E+3, isRuntime=true)
+
+(7) Scan parquet m07sparksql.expedia
+Output [1]: [hotel_id#11196L]
+Batched: true
+Location: PreparedDeltaFileIndex [dbfs:/user/hive/warehouse/m07sparksql.db/expedia]
+PushedFilters: [IsNotNull(hotel_id)]
+ReadSchema: struct<hotel_id:bigint>
+
+(8) ColumnarToRow
+Input [1]: [hotel_id#11196L]
+
+(9) Filter
+Input [1]: [hotel_id#11196L]
+Condition : isnotnull(hotel_id#11196L)
+
+(10) BroadcastHashJoin [codegen id : 2]
+Left keys [1]: [cast(id#11169 as bigint)]
+Right keys [1]: [hotel_id#11196L]
+Join condition: None
+
+(11) Project [codegen id : 2]
+Output [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Input [6]: [month#11175, id#11169, name#11172, max#11209, min#11211, hotel_id#11196L]
+
+(12) HashAggregate [codegen id : 2]
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [merge_max(merge max#11209) AS max#11209, merge_min(merge min#11211) AS min#11211]
+Aggregate Attributes [2]: [max#11209, min#11211]
+Results [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+
+(13) Exchange
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: hashpartitioning(month#11175, id#11169, name#11172, 200), ENSURE_REQUIREMENTS, [id=#12472]
+
+(14) ShuffleQueryStage
+Output [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: 1, Statistics(sizeInBytes=5.7 MiB, rowCount=5.53E+4, isRuntime=true)
+
+(15) CustomShuffleReader
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: coalesced
+
+(16) HashAggregate [codegen id : 3]
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [finalmerge_max(merge max#11209) AS max(avg_tmpr_c#11164)#11197, finalmerge_min(merge min#11211) AS min(avg_tmpr_c#11164)#11198]
+Aggregate Attributes [2]: [max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+Results [5]: [month#11175, id#11169, name#11172, max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+
+(17) Project [codegen id : 3]
+Output [4]: [id#11169, name#11172, month#11175, round((max(avg_tmpr_c#11164)#11197 - min(avg_tmpr_c#11164)#11198), 2) AS temperature_diff#11053]
+Input [5]: [month#11175, id#11169, name#11172, max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+
+(18) TakeOrderedAndProject
+Input [4]: [id#11169, name#11172, month#11175, temperature_diff#11053]
+Arguments: 10, [temperature_diff#11053 DESC NULLS LAST], [id#11169, name#11172, month#11175, temperature_diff#11053]
+
+(19) Filter
+Input [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+Condition : isnotnull(id#11169)
+
+(20) HashAggregate
+Input [4]: [avg_tmpr_c#11164, id#11169, name#11172, month#11175]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [partial_max(avg_tmpr_c#11164) AS max#11209, partial_min(avg_tmpr_c#11164) AS min#11211]
+Aggregate Attributes [2]: [max#11209, min#11211]
+Results [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+
+(21) BroadcastExchange
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: HashedRelationBroadcastMode(List(cast(input[1, string, true] as bigint)),false), [id=#12165]
+
+(22) Filter
+Input [1]: [hotel_id#11196L]
+Condition : isnotnull(hotel_id#11196L)
+
+(23) BroadcastHashJoin
+Left keys [1]: [cast(id#11169 as bigint)]
+Right keys [1]: [hotel_id#11196L]
+Join condition: None
+
+(24) Project
+Output [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Input [6]: [month#11175, id#11169, name#11172, max#11209, min#11211, hotel_id#11196L]
+
+(25) HashAggregate
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [merge_max(merge max#11209) AS max#11209, merge_min(merge min#11211) AS min#11211]
+Aggregate Attributes [2]: [max#11209, min#11211]
+Results [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+
+(26) Exchange
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Arguments: hashpartitioning(month#11175, id#11169, name#11172, 200), ENSURE_REQUIREMENTS, [id=#12170]
+
+(27) HashAggregate
+Input [5]: [month#11175, id#11169, name#11172, max#11209, min#11211]
+Keys [3]: [month#11175, id#11169, name#11172]
+Functions [2]: [finalmerge_max(merge max#11209) AS max(avg_tmpr_c#11164)#11197, finalmerge_min(merge min#11211) AS min(avg_tmpr_c#11164)#11198]
+Aggregate Attributes [2]: [max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+Results [5]: [month#11175, id#11169, name#11172, max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+
+(28) Project
+Output [4]: [id#11169, name#11172, month#11175, round((max(avg_tmpr_c#11164)#11197 - min(avg_tmpr_c#11164)#11198), 2) AS temperature_diff#11053]
+Input [5]: [month#11175, id#11169, name#11172, max(avg_tmpr_c#11164)#11197, min(avg_tmpr_c#11164)#11198]
+
+(29) TakeOrderedAndProject
+Input [4]: [id#11169, name#11172, month#11175, temperature_diff#11053]
+Arguments: 10, [temperature_diff#11053 DESC NULLS LAST], [id#11169, name#11172, month#11175, temperature_diff#11053]
+
+(30) AdaptiveSparkPlan
+Output [4]: [id#11169, name#11172, month#11175, temperature_diff#11053]
+Arguments: isFinalPlan=true
+
+

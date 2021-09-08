@@ -1,0 +1,178 @@
+For visits with extended stay (more than 7 days) calculate weather trend (the day temperature
+difference between last and first day of stay) and average temperature during stay.
+
+
+== Physical Plan ==
+AdaptiveSparkPlan (30)
++- == Final Plan ==
+TakeOrderedAndProject (18)
++- SortAggregate (17)
++- Sort (16)
++- CustomShuffleReader (15)
++- ShuffleQueryStage (14)
++- Exchange (13)
++- SortAggregate (12)
++- * Sort (11)
++- * Project (10)
++- * BroadcastHashJoin Inner BuildRight (9)
+:- * Filter (3)
+:  +- * ColumnarToRow (2)
+:     +- Scan parquet m07sparksql.expedia (1)
++- BroadcastQueryStage (8)
++- BroadcastExchange (7)
++- * Filter (6)
++- * ColumnarToRow (5)
++- Scan parquet m07sparksql.hotel_weather (4)
++- == Initial Plan ==
+TakeOrderedAndProject (29)
++- SortAggregate (28)
++- Sort (27)
++- Exchange (26)
++- SortAggregate (25)
++- Sort (24)
++- Project (23)
++- BroadcastHashJoin Inner BuildRight (22)
+:- Filter (19)
+:  +- Scan parquet m07sparksql.expedia (1)
++- BroadcastExchange (21)
++- Filter (20)
++- Scan parquet m07sparksql.hotel_weather (4)
+
+
+(1) Scan parquet m07sparksql.expedia
+Output [4]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L]
+Batched: true
+Location: PreparedDeltaFileIndex [dbfs:/user/hive/warehouse/m07sparksql.db/expedia]
+PushedFilters: [IsNotNull(srch_ci), IsNotNull(srch_co), IsNotNull(hotel_id)]
+ReadSchema: struct<id:bigint,srch_ci:string,srch_co:string,hotel_id:bigint>
+
+(2) ColumnarToRow [codegen id : 2]
+Input [4]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L]
+
+(3) Filter [codegen id : 2]
+Input [4]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L]
+Condition : (((isnotnull(srch_ci#11919) AND isnotnull(srch_co#11920)) AND (datediff(cast(srch_ci#11919 as date), cast(srch_co#11920 as date)) > 7)) AND isnotnull(hotel_id#11926L))
+
+(4) Scan parquet m07sparksql.hotel_weather
+Output [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Batched: true
+Location: PreparedDeltaFileIndex [dbfs:/mnt/target/hitel-weather-delta]
+PushedFilters: [IsNotNull(id), IsNotNull(wthr_date)]
+ReadSchema: struct<avg_tmpr_c:double,id:string,wthr_date:string>
+
+(5) ColumnarToRow [codegen id : 1]
+Input [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+
+(6) Filter [codegen id : 1]
+Input [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Condition : (isnotnull(id#11947) AND isnotnull(wthr_date#11951))
+
+(7) BroadcastExchange
+Input [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Arguments: HashedRelationBroadcastMode(List(cast(input[1, string, false] as bigint)),false), [id=#13091]
+
+(8) BroadcastQueryStage
+Output [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Arguments: 0, Statistics(sizeInBytes=1280.0 KiB, rowCount=1.33E+4, isRuntime=true)
+
+(9) BroadcastHashJoin [codegen id : 2]
+Left keys [1]: [hotel_id#11926L]
+Right keys [1]: [cast(id#11947 as bigint)]
+Join condition: ((wthr_date#11951 >= srch_co#11920) AND (wthr_date#11951 <= srch_ci#11919))
+
+(10) Project [codegen id : 2]
+Output [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Input [7]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942, id#11947, wthr_date#11951]
+
+(11) Sort [codegen id : 2]
+Input [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Arguments: [id#11907L ASC NULLS FIRST, hotel_id#11926L ASC NULLS FIRST], false, 0
+
+(12) SortAggregate
+Input [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Keys [2]: [id#11907L, hotel_id#11926L]
+Functions [6]: [partial_first(srch_ci#11919, false) AS (first#11976, valueSet#11977), partial_first(srch_co#11920, false) AS (first#11980, valueSet#11981), partial_avg(avg_tmpr_c#11942) AS (sum#11984, count#11985L), partial_last(avg_tmpr_c#11942, false) AS (last#11988, valueSet#11989), partial_first(avg_tmpr_c#11942, false) AS (first#11992, valueSet#11993), partial_count(1) AS count#11995L]
+Aggregate Attributes [11]: [first#11974, valueSet#11975, first#11978, valueSet#11979, sum#11982, count#11983L, last#11986, valueSet#11987, first#11990, valueSet#11991, count#11994L]
+Results [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+
+(13) Exchange
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: hashpartitioning(id#11907L, hotel_id#11926L, 200), ENSURE_REQUIREMENTS, [id=#13219]
+
+(14) ShuffleQueryStage
+Output [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: 1, Statistics(sizeInBytes=68.9 KiB, rowCount=490, isRuntime=true)
+
+(15) CustomShuffleReader
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: coalesced
+
+(16) Sort
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: [id#11907L ASC NULLS FIRST, hotel_id#11926L ASC NULLS FIRST], false, 0
+
+(17) SortAggregate
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Keys [2]: [id#11907L, hotel_id#11926L]
+Functions [6]: [finalmerge_first(merge first#11976, valueSet#11977) AS first(srch_ci#11919)()#11880, finalmerge_first(merge first#11980, valueSet#11981) AS first(srch_co#11920)()#11881, finalmerge_avg(merge sum#11984, count#11985L) AS avg(avg_tmpr_c#11942)#11956, finalmerge_last(merge last#11988, valueSet#11989) AS last(avg_tmpr_c#11942)()#11883, finalmerge_first(merge first#11992, valueSet#11993) AS first(avg_tmpr_c#11942)()#11884, finalmerge_count(merge count#11995L) AS count(1)#11955L]
+Aggregate Attributes [6]: [first(srch_ci#11919)()#11880, first(srch_co#11920)()#11881, avg(avg_tmpr_c#11942)#11956, last(avg_tmpr_c#11942)()#11883, first(avg_tmpr_c#11942)()#11884, count(1)#11955L]
+Results [7]: [id#11907L, first(srch_ci#11919)()#11880 AS first(srch_ci)#11957, first(srch_co#11920)()#11881 AS first(srch_co)#11958, hotel_id#11926L, round(avg(avg_tmpr_c#11942)#11956, 2) AS avg_per_stay#11882, round((last(avg_tmpr_c#11942)()#11883 - first(avg_tmpr_c#11942)()#11884), 2) AS weather_trend#11885, CASE WHEN (count(1)#11955L > 1) THEN true ELSE false END AS multiple_measurements#11886]
+
+(18) TakeOrderedAndProject
+Input [7]: [id#11907L, first(srch_ci)#11957, first(srch_co)#11958, hotel_id#11926L, avg_per_stay#11882, weather_trend#11885, multiple_measurements#11886]
+Arguments: 1001, [id#11907L ASC NULLS FIRST], [id#11907L, first(srch_ci)#11957, first(srch_co)#11958, hotel_id#11926L, avg_per_stay#11882, weather_trend#11885, multiple_measurements#11886]
+
+(19) Filter
+Input [4]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L]
+Condition : (((isnotnull(srch_ci#11919) AND isnotnull(srch_co#11920)) AND (datediff(cast(srch_ci#11919 as date), cast(srch_co#11920 as date)) > 7)) AND isnotnull(hotel_id#11926L))
+
+(20) Filter
+Input [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Condition : (isnotnull(id#11947) AND isnotnull(wthr_date#11951))
+
+(21) BroadcastExchange
+Input [3]: [avg_tmpr_c#11942, id#11947, wthr_date#11951]
+Arguments: HashedRelationBroadcastMode(List(cast(input[1, string, false] as bigint)),false), [id=#12972]
+
+(22) BroadcastHashJoin
+Left keys [1]: [hotel_id#11926L]
+Right keys [1]: [cast(id#11947 as bigint)]
+Join condition: ((wthr_date#11951 >= srch_co#11920) AND (wthr_date#11951 <= srch_ci#11919))
+
+(23) Project
+Output [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Input [7]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942, id#11947, wthr_date#11951]
+
+(24) Sort
+Input [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Arguments: [id#11907L ASC NULLS FIRST, hotel_id#11926L ASC NULLS FIRST], false, 0
+
+(25) SortAggregate
+Input [5]: [id#11907L, srch_ci#11919, srch_co#11920, hotel_id#11926L, avg_tmpr_c#11942]
+Keys [2]: [id#11907L, hotel_id#11926L]
+Functions [6]: [partial_first(srch_ci#11919, false) AS (first#11976, valueSet#11977), partial_first(srch_co#11920, false) AS (first#11980, valueSet#11981), partial_avg(avg_tmpr_c#11942) AS (sum#11984, count#11985L), partial_last(avg_tmpr_c#11942, false) AS (last#11988, valueSet#11989), partial_first(avg_tmpr_c#11942, false) AS (first#11992, valueSet#11993), partial_count(1) AS count#11995L]
+Aggregate Attributes [11]: [first#11974, valueSet#11975, first#11978, valueSet#11979, sum#11982, count#11983L, last#11986, valueSet#11987, first#11990, valueSet#11991, count#11994L]
+Results [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+
+(26) Exchange
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: hashpartitioning(id#11907L, hotel_id#11926L, 200), ENSURE_REQUIREMENTS, [id=#12979]
+
+(27) Sort
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Arguments: [id#11907L ASC NULLS FIRST, hotel_id#11926L ASC NULLS FIRST], false, 0
+
+(28) SortAggregate
+Input [13]: [id#11907L, hotel_id#11926L, first#11976, valueSet#11977, first#11980, valueSet#11981, sum#11984, count#11985L, last#11988, valueSet#11989, first#11992, valueSet#11993, count#11995L]
+Keys [2]: [id#11907L, hotel_id#11926L]
+Functions [6]: [finalmerge_first(merge first#11976, valueSet#11977) AS first(srch_ci#11919)()#11880, finalmerge_first(merge first#11980, valueSet#11981) AS first(srch_co#11920)()#11881, finalmerge_avg(merge sum#11984, count#11985L) AS avg(avg_tmpr_c#11942)#11956, finalmerge_last(merge last#11988, valueSet#11989) AS last(avg_tmpr_c#11942)()#11883, finalmerge_first(merge first#11992, valueSet#11993) AS first(avg_tmpr_c#11942)()#11884, finalmerge_count(merge count#11995L) AS count(1)#11955L]
+Aggregate Attributes [6]: [first(srch_ci#11919)()#11880, first(srch_co#11920)()#11881, avg(avg_tmpr_c#11942)#11956, last(avg_tmpr_c#11942)()#11883, first(avg_tmpr_c#11942)()#11884, count(1)#11955L]
+Results [7]: [id#11907L, first(srch_ci#11919)()#11880 AS first(srch_ci)#11957, first(srch_co#11920)()#11881 AS first(srch_co)#11958, hotel_id#11926L, round(avg(avg_tmpr_c#11942)#11956, 2) AS avg_per_stay#11882, round((last(avg_tmpr_c#11942)()#11883 - first(avg_tmpr_c#11942)()#11884), 2) AS weather_trend#11885, CASE WHEN (count(1)#11955L > 1) THEN true ELSE false END AS multiple_measurements#11886]
+
+(29) TakeOrderedAndProject
+Input [7]: [id#11907L, first(srch_ci)#11957, first(srch_co)#11958, hotel_id#11926L, avg_per_stay#11882, weather_trend#11885, multiple_measurements#11886]
+Arguments: 1001, [id#11907L ASC NULLS FIRST], [id#11907L, first(srch_ci)#11957, first(srch_co)#11958, hotel_id#11926L, avg_per_stay#11882, weather_trend#11885, multiple_measurements#11886]
+
+(30) AdaptiveSparkPlan
+Output [7]: [id#11907L, first(srch_ci)#11957, first(srch_co)#11958, hotel_id#11926L, avg_per_stay#11882, weather_trend#11885, multiple_measurements#11886]
+Arguments: isFinalPlan=true

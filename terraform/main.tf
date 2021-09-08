@@ -1,5 +1,9 @@
 terraform {
   backend "azurerm" {
+    storage_account_name = "bd201staccaparkbasics"
+    container_name = "m06sparkbasics"
+    key = "m06sparkbasics"
+    resource_group_name = "bd201stacc-resource-group"
   }
 }
 
